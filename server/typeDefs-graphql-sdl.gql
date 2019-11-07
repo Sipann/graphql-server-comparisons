@@ -1,4 +1,6 @@
 
+scalar Date
+
 type InvitedType {
   id: ID
   email: String!
@@ -18,7 +20,7 @@ type ParticipantType {
 type EventType {
   id: ID
   eventTitle: String!
-  eventDate: String
+  eventDate: Date
   eventLocation: String
   eventGroup: GroupType
   eventParticipants: [ParticipantType]
@@ -33,11 +35,12 @@ type GroupType {
 }
 
 type Query {
+  # hello: String
   event(eventId: ID!): EventType
-  group(id: ID): GroupType
+  group(groupId: ID): GroupType
   groups: [GroupType]
   invited(email: String!): InvitedType
-  participant(id: ID!): ParticipantType
+  participant(participantId: ID!): ParticipantType
 }
 
 type Mutation {

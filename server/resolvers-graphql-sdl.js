@@ -1,195 +1,238 @@
-import Event from './models/Event.js';
-import Group from './models/Group.js';
-import Participant from './models/Participant.js';
-import Invited from './models/Invited.js';
-import mongoose from 'mongoose';
+import { GraphQLScalarType } from 'graphql';
+import { Kind } from 'graphql/language';
+
+import Invited from './models/invited.js';
+import Group from './models/group.js';
+import Event from './models/event.js';
+import Participant from './models/participant.js';
 
 export default {
 
-  event: async ({ eventId }) => {
-    const event = await Event.findById(eventId)
-      .populate({
-        path: 'eventGroup',
-        model: 'Group'
-      })
-      .populate({
-        path: 'eventParticipants',
-        model: 'Participant'
-      });
-    return event;
-  },
-
-  group: async ({ id }) => {
-    const group = await Group.findById(id)
-      .populate({
-        path: 'groupEvents',
-        model: 'Event'
-      })
-      .populate({
-        path: 'groupParticipants',
-        model: 'Participant'
-      })
-      .populate({
-        path: 'groupInvited',
-        model: 'Invited'
-      });
-    return group;
-  },
-
-  groups: async () => {
-    const result = await Group.find({})
-      .populate({
-        path: 'groupEvents',
-        model: 'Event'
-      });
-    return result;
-  },
-  
-  invited: async ({ email }) => {
-    const invited = await Invited.findOne({ email: email })
-      .populate({
-        path: 'invitedGroups',
-        model: 'Group'
-      });
-    return invited;
-  },
-  
-  participant: async ({ id }) => {
-    const participant = await Participant.findById(id)
-      .populate({
-        path: 'participantGroups',
-        model: 'Group'
-      })
-      .populate({
-        path: 'participantEvents',
-        model: 'Event'
-      });
-    return participant;
-  },
-
-
-
-  addGroup: async ({ groupTitle }) => {
-    const group = await Group.findOne({ groupTitle: groupTitle });
-    if (group) throw new Error('Group already exists');
-    const newGroup = await new Group({
-      groupTitle,
-    }).save();
-    return newGroup;
-  },
-  
-  addEventToGroup: async ({ eventTitle, eventGroup, eventDate, eventLocation }) => {
-    let query = { $and: [
-      { eventTitle: eventTitle },
-      { eventGroup: eventGroup },
-    ] };
-    const event = await Event.findOne(query);
-    if (event) throw new Error('Event already exists for this group');
-
-    const newEvent = await new Event({
-      eventTitle,
-      eventGroup,
-      eventDate,
-      eventLocation,
-    }).save();
-    
-    await Group.findOneAndUpdate(
-      { _id: eventGroup },
-      { "$push": { "groupEvents": newEvent._id } }
-    );
-
-    return newEvent;
-  },
-  
-  addInvitedToGroup: async ({ groupId, invitedEmail }) => {
-    let queryInvitedToThisGroup = { $and: [
-      { invitedGroups: groupId }, 
-      { email: invitedEmail },
-    ]};
-    const alreadyInvitedToGroup = await Invited.findOne(queryInvitedToThisGroup);
-    if (alreadyInvitedToGroup) throw new Error('Has already been invited to this group');
-
-    const invited = await Invited.findOneAndUpdate(
-      { email: invitedEmail },
-      { "$push": { "invitedGroups": groupId } },
-      { upsert: true, new: true }
-    );
-
-    await Group.findOneAndUpdate(
-      { _id: groupId },
-      { "$push": { "groupInvited": invited._id } }
-    );
-
-    return invited;
-  },
-  
-  addParticipant: async ({username, email, password, avatar}) => {
-    const participant = await Participant.findOne({ email: email });
-    if (participant) throw new Error('Participant already exists');
-    const newParticipant = await Participant({
-      username,
-      email,
-      password,
-      avatar
-    }).save();
-    return newParticipant;
-  },
-  
-  addParticipantToGroup: async ({ groupId, participantId }) => {
-    let query = { $and: [
-      { _id: participantId },
-      { participantGroups: groupId },
-    ] };
-    const participant = await Participant.findOne(query);
-    if (participant) throw new Error('Participant already part of this group');
-
-    const newParticipantToGroup = await Participant.findOneAndUpdate(
-      { _id: participantId },
-      { "$push": { "participantGroups": groupId } },
-      { upsert: true, new: true }
-    );
-
-    await Group.findOneAndUpdate(
-      { _id: groupId },
-      { "$push": { "groupParticipants": newParticipantToGroup._id } }
-    );
-
-    return newParticipantToGroup;
-  },
-  
-  addParticipantToEvent: async ({ eventId, participantId }) => {
-    let queryParticipantInEvent = { $and: [
-      { _id: participantId },
-      { participantEvents: eventId },
-    ] };
-    const participantInEvent = await Participant.findOne(queryParticipantInEvent);
-    if (participantInEvent) throw new Error('Participant already registered for this event');
-
-    const event = await Event.findById(eventId, 'eventGroup');
-    const eventGroupId = event.eventGroup;
-
-    let queryParticipantInGroupOfEvent = { $and: [
-      { _id: participantId },
-      { participantGroups: eventGroupId },
-    ] };
-    const participantInGroupOfEvent = await Participant.findOne(queryParticipantInGroupOfEvent);
-    if (!participantInGroupOfEvent) throw new Error('Participant is not a member of group organizing this event');
-    else {
-      const newParticipantToEvent = await Participant.findOneAndUpdate(
-        { _id: participantId },
-        { "$push": { "participantEvents" : eventId } },
-        { upsert: true, new: true }
-      );
-
-      await Event.findOneAndUpdate(
-        { _id: eventId },
-        { "$push": { "eventParticipants": newParticipantToEvent._id } }
-      );
-
-      return newParticipantToEvent;
+  Date: new GraphQLScalarType({
+    name: 'Date',
+    description: 'Date custom scalar type',
+    parseValue(value) {
+      return new Date(value);
+    },
+    serialize(value) {
+      return value.getTime();
+    },
+    parseLiteral(ast) {
+      if(ast.kind === Kind.INT) {
+        return parseInt(ast.value, 10);
+      }
+      return null;
     }
+  }),
+
+  EventType: {
+    eventGroup: async (parent) => {
+      return await Group.findById(parent.eventGroup);
+    },
+    eventParticipants: async (parent) => {
+      return await Participant.find({ _id: parent.eventParticipants });
+    },
+  },
+
+  GroupType: {
+    groupEvents: async (parent) => {
+      return await Event.find({ _id: parent.groupEvents });
+    },
+    groupInvited: async (parent) => {
+      return await Invited.find({ _id: parent.groupInvited });
+    },
+    groupParticipants: async (parent) => {
+      return await Participant.find({ _id: parent.groupParticipants });
+    }
+  },
+
+  InvitedType: {
+    invitedGroups: async (parent) => {
+      return await Group.find({ _id: parent.invitedGroups });
+    },
+  },
+
+  ParticipantType: {
+    participantEvents: async (parent) => {
+      return await Event.find({ _id: parent.participantEvents });
+    },
+    participantGroups: async (parent) => {
+      return await Group.find({ _id: parent.participantGroups });
+    },
+  },
+
+  
+  Query: {
+    
+    event: async (_, { eventId }, { Event }) => {
+      return await Event.findById(eventId);
+    },
+
+    group: async (_, { groupId }) => {
+      return await Group.findById(groupId);
+    },
+
+    groups: async () => {
+      return await Group.find({});
+    },
+    
+    invited: async (_, { email }) => {
+      return await Invited.findOne({ email: email });
+    },
+    
+    participant: async (_, { participantId }) => {
+      return await Participant.findById(participantId);
+    },
 
   },
 
-}
+  Mutation: {
+   
+    addGroup: async (_, { groupTitle }) => {
+      try {
+        const groupAlreadyExists = await Group.findOne({ groupTitle: groupTitle });
+        if (groupAlreadyExists) throw new Error('Group already exists');
+  
+        return await new Group({
+          groupTitle,
+        }).save();
 
+      } catch (e) {
+        console.error(e);
+      }
+    },
+
+    addEventToGroup: async (_, { eventTitle, eventGroup, eventDate, eventLocation }) => {
+      try {
+        let queryIsEventInGroup = { $and: [
+          { eventTitle: eventTitle },
+          { eventGroup: eventGroup },
+        ] };
+        const eventIsInGroup = await Event.findOne(queryIsEventInGroup);
+        if (eventIsInGroup) throw new Error('Event already exists for this group');
+
+        const newEvent = await new Event({
+          eventTitle,
+          eventGroup,
+          eventDate,
+          eventLocation
+        }).save();
+
+        await Group.findOneAndUpdate(
+          { _id: eventGroup },
+          { "$push": { "groupEvents": newEvent } }
+        );
+
+        return newEvent;
+
+      } catch (e) {
+        console.error(e);
+      }
+    },
+
+    addParticipant: async (_, { username, email, password, avatar }) => {
+      try {
+        const participantExists = await Participant.findOne({ email: email });
+        if (participantExists) throw new Error('Participant already exists');
+
+        return await Participant({
+          username, 
+          email,
+          password,
+          avatar
+        }).save();
+
+      } catch (e) {
+        console.error(e);
+      }
+    },
+
+    addInvitedToGroup: async (_, { groupId, invitedEmail }) => {
+      try {
+        const group = await Group.findById(groupId);
+        const invited = await Invited.findOne({ email: invitedEmail });
+
+        // check if has already been invited to join the group
+        const isInvitedInGroup = group.groupInvited.includes(invited._id);
+        if (isInvitedInGroup) throw new Error('Invited is already part of this group');
+
+        // add group to invited
+        invited.invitedGroups.push(groupId);
+        await invited.save();
+
+        // add invited to group 
+        group.groupInvited.push(invited._id);
+        await group.save();
+
+        return invited;
+
+      } catch (e) {
+        console.error(e);
+      }
+    },
+    
+
+    addParticipantToEvent: async (_, { eventId, participantId }) => {
+      try {
+        const event = await Event.findById(eventId);
+        const groupOfEvent = event.eventGroup;
+        const participant = await Participant.findById(participantId);
+
+        // check if participant is already registered for this event
+        const isParticipantOfEvent = participant.participantEvents.includes(event._id);
+        if (isParticipantOfEvent) throw new Error('Participant already takes part to this event');
+
+
+        // check if participant is part of group organizing this event
+        const isParticipantMemberOfGroup = participant.participantGroups.includes(groupOfEvent);
+
+        if (!isParticipantMemberOfGroup) throw new Error('Participant is not a member of group organizing this event');
+
+        // add Event to Participant
+        participant.participantEvents.push(event);
+        await participant.save();
+
+        // add Participant to Event
+        event.eventParticipants.push(participant);
+        await event.save();
+
+        return participant;
+
+      } catch (e) {
+        console.error(e);
+      }
+    },
+
+    addParticipantToGroup: async (_, { groupId, participantId }) => {
+      try {
+        const participant = await Participant.findById(participantId);
+        const group = await Group.findById(groupId);
+        const invited = await Invited.findOne({ email: participant.email });
+
+        if (!invited) throw new Error('Participant has not been invited to join any group');
+
+        // check if participant is already part of this group
+        const participantIsInGroup = group.groupParticipants.includes(participant._id);
+        if (participantIsInGroup) throw new Error('Participant is already part of this group');
+
+        // check if participant has been invited to join the group
+        const participantIsInvited = group.groupInvited.includes(invited._id);
+        if (!participantIsInvited) throw new Error('Participant has not been invited to join this group');
+
+        // add group to participant
+        participant.participantGroups.push(groupId);
+        await participant.save();
+        
+        // add participant to group
+        group.groupParticipants.push(participantId);
+        await group.save();
+
+        return participant;
+
+      } catch (e) {
+        console.error(e);
+      }
+    },
+
+  },
+}
