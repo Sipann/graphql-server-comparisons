@@ -1,3 +1,6 @@
+import { GraphQLScalarType } from 'graphql';
+import { Kind } from 'graphql/language';
+
 import Group from './models/Group.js';
 import Participant from './models/Participant.js';
 import Event from './models/Event.js';
@@ -12,6 +15,104 @@ import {
   GraphQLSchema,
   GraphQLString, 
 } from 'graphql';
+
+
+const Date = new GraphQLScalarType({
+  name: 'Date',
+  description: 'Date custom scalar type',
+  parseValue(value) {
+    return new Date(value);
+  },
+  serialize(value) {
+    return value.getTime();
+  },
+  parseLiteral(ast) {
+    if(ast.kind === Kind.INT) {
+      return parseInt(ast.value, 10);
+    }
+    return null;
+  }
+});
+
+const EventType = new GraphQLObjectType({
+  name: 'Event',
+  description: 'Event organized',
+  fields: () => ({
+    id: { type: GraphQLID },
+    eventTitle: { 
+      type: new GraphQLNonNull(GraphQLString),
+      description: 'Name of the event', 
+    },
+    eventDate: { 
+      type: Date,
+      description: 'Date of the event' 
+    },
+    eventLocation: { 
+      type: GraphQLString,
+      description: 'Location of the event' 
+    },
+
+    eventGroup: {
+      type: new GraphQLNonNull(GroupType),
+      description: 'Group organizing this event',
+      resolve: async (parent) => {
+        return await Group.findById(parent.eventGroup);
+      }
+    },
+    eventParticipants: {
+      description: 'Participants (registered users) going to this event',
+      type: new GraphQLList(ParticipantType),
+      resolve: async (parent) => {
+        // return await Participant.find({ participantEvents: parent.id })
+        return await Participant.find({ _id: parent.eventParticipants });
+      } 
+    }
+  }),
+});
+
+
+
+
+const GroupType = new GraphQLObjectType({
+  name: 'Group',
+  description: 'Group of persons',
+  fields: () => ({
+    id: { type: GraphQLID },
+
+    groupTitle: { 
+      type: new GraphQLNonNull(GraphQLString),
+      description: 'Name of the group', 
+    },
+
+    groupEvents: {
+      type: new GraphQLList(EventType),
+      description: 'Events organized by this group',
+      resolve: async (parent) => {
+        // return await Event.find({ eventGroup: parent.id })
+        return await Event.find({ _id: parent.groupEvents });
+      }
+    },
+
+    groupInvited: {
+      type: new GraphQLList(InvitedType),
+      description: 'Persons (emails) invited to join this group',
+      resolve: async (parent) => {
+        // return await Invited.find({ invitedGroups: parent.id });
+        return await Invited.find({ _id: parent.groupInvited });
+      },
+    },
+
+    groupParticipants: {
+      type: new GraphQLList(ParticipantType),
+      description: 'Participants (registered users) of this group',
+      resolve: async (parent) => {
+        // return await Participant.find({ participantGroups: parent.id });
+        return await Participant.find({ _id: parent.groupParticipants });
+      },
+    },
+
+  }),
+});
 
 
 const InvitedType = new GraphQLObjectType({
@@ -31,7 +132,6 @@ const InvitedType = new GraphQLObjectType({
     },
   }),
 });
-
 
 const ParticipantType = new GraphQLObjectType({
   name: 'Participant',
@@ -71,78 +171,6 @@ const ParticipantType = new GraphQLObjectType({
   }),
 });
 
-const EventType = new GraphQLObjectType({
-  name: 'Event',
-  description: 'Event organized',
-  fields: () => ({
-    id: { type: GraphQLID },
-    eventTitle: { 
-      type: new GraphQLNonNull(GraphQLString),
-      description: 'Name of the event', 
-    },
-    eventDate: { 
-      type: GraphQLString,
-      description: 'Date of the event' 
-    },
-    eventLocation: { 
-      type: GraphQLString,
-      description: 'Location of the event' 
-    },
-
-    eventGroup: {
-      type: new GraphQLNonNull(GroupType),
-      description: 'Group organizing this event',
-      resolve: async (parent) => {
-        return await Group.findById(parent.eventGroup);
-      }
-    },
-    eventParticipants: {
-      description: 'Participants (registered users) going to this event',
-      type: new GraphQLList(ParticipantType),
-      resolve: async (parent) => {
-        return await Participant.find({ participantEvents: parent.id })
-      } 
-    }
-  }),
-});
-
-const GroupType = new GraphQLObjectType({
-  name: 'Group',
-  description: 'Group of persons',
-  fields: () => ({
-    id: { type: GraphQLID },
-
-    groupTitle: { 
-      type: new GraphQLNonNull(GraphQLString),
-      description: 'Name of the group', 
-    },
-
-    groupEvents: {
-      type: new GraphQLList(EventType),
-      description: 'Events organized by this group',
-      resolve: async (parent) => {
-        return await Event.find({ eventGroup: parent.id })
-      }
-    },
-    groupParticipants: {
-      type: new GraphQLList(ParticipantType),
-      description: 'Participants (registered users) of this group',
-      resolve: async (parent) => {
-        return await Participant.find({ participantGroups: parent.id });
-      },
-    },
-
-    groupInvited: {
-      type: new GraphQLList(InvitedType),
-      description: 'Persons (emails) invited to join this group',
-      resolve: async (parent) => {
-        return await Invited.find({ invitedGroups: parent.id });
-      },
-    },
-    
-  }),
-});
-
 
 
 const RootQuery = new GraphQLObjectType({
@@ -161,9 +189,9 @@ const RootQuery = new GraphQLObjectType({
     group: {
       type: GroupType,
       description: 'fetch a group by its id',
-      args: { id: { type: GraphQLID } },
-      resolve (_, { id }) {
-        return Group.findById(id);
+      args: { groupId: { type: GraphQLID } },
+      resolve (_, { groupId }) {
+        return Group.findById(groupId);
       },
     },
 
@@ -187,9 +215,9 @@ const RootQuery = new GraphQLObjectType({
     participant: {
       type: ParticipantType,
       description: 'fetch a participant (registered user) by its id',
-      args: { id: { type: GraphQLID } },
-      resolve (_, { id } ) {
-        return Participant.findById(id);
+      args: { participantId: { type: GraphQLID } },
+      resolve (_, { participantId } ) {
+        return Participant.findById(participantId);
       },
     },
 
@@ -206,15 +234,21 @@ const RootMutation = new GraphQLObjectType({
         groupTitle: { type: new GraphQLNonNull(GraphQLString) },
       },
       resolve: async (_, { groupTitle }) => {
-        const group = await Group.findOne({ groupTitle: groupTitle });
-        if (group) throw new Error('Group already exists');
-        const newGroup = await new Group({
-          groupTitle,
-        }).save();
-        return newGroup;
+        try {
+          const groupAlreadyExists = await Group.findOne({ groupTitle: groupTitle });
+          if (groupAlreadyExists) throw new Error('Group already exists');
+
+          return await new Group({
+            groupTitle,
+          }).save();
+
+        } catch (e) {
+          console.error(e);
+        }
       },
     },
 
+    
 
     addEventToGroup: {
       type: EventType,
@@ -225,19 +259,31 @@ const RootMutation = new GraphQLObjectType({
         eventLocation: { type: GraphQLString },
       },
       resolve: async (_, { eventTitle, eventGroup, eventDate, eventLocation }) => {
-        let query = { $and: [
-          { eventTitle: eventTitle },
-          { eventGroup: eventGroup },
-        ] };
-        const event = await Event.findOne(query);
-        if (event) throw new Error('Event already exists for this group');
-        const newEvent = await new Event({
-          eventTitle,
-          eventGroup,
-          eventDate,
-          eventLocation,
-        }).save();
-        return newEvent;
+        try {
+          let queryIsEventInGroup = { $and: [
+            { eventTitle: eventTitle },
+            { eventGroup: eventGroup },
+          ] };
+          const eventIsInGroup = await Event.findOne(queryIsEventInGroup);
+          if (eventIsInGroup) throw new Error('Event already exists for this group');
+  
+          const newEvent = await new Event({
+            eventTitle,
+            eventGroup,
+            eventDate,
+            eventLocation
+          }).save();
+  
+          await Group.findOneAndUpdate(
+            { _id: eventGroup },
+            { "$push": { "groupEvents": newEvent } }
+          );
+  
+          return newEvent;
+  
+        } catch (e) {
+          console.error(e);
+        }
       },
     },
 
@@ -248,19 +294,34 @@ const RootMutation = new GraphQLObjectType({
         invitedEmail: { type: new GraphQLNonNull(GraphQLString) },
       },
       resolve: async (_, { groupId, invitedEmail }) => {
-        let queryInvitedToThisGroup = { $and: [
-          { invitedGroups: groupId }, 
-          { email: invitedEmail },
-        ]};
-        const alreadyInvitedToGroup = await Invited.findOne(queryInvitedToThisGroup);
-        if (alreadyInvitedToGroup) throw new Error('Has already been invited to this group');
+        try {
+          const group = await Group.findById(groupId);
+          let invited = await Invited.findOne({ email: invitedEmail });
+  
+          // add group to invited
+          if (invited) {
+            // check if has already been invited to join the group
+            const isInvitedInGroup = group.groupInvited.includes(invited._id);
+            if (isInvitedInGroup) throw new Error('Invited is already part of this group');
 
-        const invited = await Invited.findOneAndUpdate(
-          { email: invitedEmail },
-          { "$push": { "invitedGroups": groupId } },
-          { upsert: true, new: true }
-        );
-        return invited;
+            invited.invitedGroups.push(groupId);
+            await invited.save();
+          } else {
+            invited = await new Invited({
+              email: invitedEmail,
+              invitedGroups: [groupId]
+            }).save();
+          }
+  
+          // add invited to group 
+          group.groupInvited.push(invited._id);
+          await group.save();
+  
+          return invited;
+  
+        } catch (e) {
+          console.error(e);
+        }
       },
     },
 
@@ -273,15 +334,20 @@ const RootMutation = new GraphQLObjectType({
         avatar: { type: GraphQLString },
       },
       resolve: async (_, {username, email, password, avatar}) => {
-        const participant = await Participant.findOne({ email: email });
-        if (participant) throw new Error('Participant already exists');
-        const newParticipant = await Participant({
-          username,
-          email,
-          password,
-          avatar
-        }).save();
-        return newParticipant;
+        try {
+          const participantExists = await Participant.findOne({ email: email });
+          if (participantExists) throw new Error('Participant already exists');
+  
+          return await Participant({
+            username, 
+            email,
+            password,
+            avatar
+          }).save();
+  
+        } catch (e) {
+          console.error(e);
+        }
       },
     },
 
@@ -292,19 +358,34 @@ const RootMutation = new GraphQLObjectType({
         participantId: { type: new GraphQLNonNull(GraphQLID) }
       },
       resolve:  async (_, { groupId, participantId }) => {
-        let query = { $and: [
-          { _id: participantId },
-          { participantGroups: groupId },
-        ] };
-        const participant = await Participant.findOne(query);
-        if (participant) throw new Error('Participant already part of this group');
-
-        const newParticipantToGroup = await Participant.findOneAndUpdate(
-          { _id: participantId },
-          { "$push": { "participantGroups": groupId } },
-          { upsert: true, new: true }
-        );
-        return newParticipantToGroup;
+        try {
+          const participant = await Participant.findById(participantId);
+          const group = await Group.findById(groupId);
+          const invited = await Invited.findOne({ email: participant.email });
+  
+          if (!invited) throw new Error('Participant has not been invited to join any group');
+  
+          // check if participant is already part of this group
+          const participantIsInGroup = group.groupParticipants.includes(participant._id);
+          if (participantIsInGroup) throw new Error('Participant is already part of this group');
+  
+          // check if participant has been invited to join the group
+          const participantIsInvited = group.groupInvited.includes(invited._id);
+          if (!participantIsInvited) throw new Error('Participant has not been invited to join this group');
+  
+          // add group to participant
+          participant.participantGroups.push(groupId);
+          await participant.save();
+          
+          // add participant to group
+          group.groupParticipants.push(participantId);
+          await group.save();
+  
+          return participant;
+  
+        } catch (e) {
+          console.error(e);
+        }
       },
     },
 
@@ -315,29 +396,33 @@ const RootMutation = new GraphQLObjectType({
         participantId: { type: new GraphQLNonNull(GraphQLID) }, 
       },
       resolve: async (_, { eventId, participantId }) => {
-        let queryParticipantInEvent = { $and: [
-          { _id: participantId },
-          { participantEvents: eventId },
-        ] };
-        const participantInEvent = await Participant.findOne(queryParticipantInEvent);
-        if (participantInEvent) throw new Error('Participant already registered for this event');
-
-        const event = await Event.findById(eventId, 'eventGroup');
-        const eventGroupId = event.eventGroup;
-
-        let queryParticipantInGroupOfEvent = { $and: [
-          { _id: participantId },
-          { participantGroups: eventGroupId },
-        ] };
-        const participantInGroupOfEvent = await Participant.findOne(queryParticipantInGroupOfEvent);
-        if (!participantInGroupOfEvent) throw new Error('Participant is not a member of group organizing this event');
-        else {
-          const newParticipantToEvent = await Participant.findOneAndUpdate(
-            { _id: participantId },
-            { "$push": { "participantEvents" : eventId } },
-            { upsert: true, new: true }
-          );
-          return newParticipantToEvent;
+        try {
+          const event = await Event.findById(eventId);
+          const groupOfEvent = event.eventGroup;
+          const participant = await Participant.findById(participantId);
+  
+          // check if participant is already registered for this event
+          const isParticipantOfEvent = participant.participantEvents.includes(event._id);
+          if (isParticipantOfEvent) throw new Error('Participant already takes part to this event');
+  
+  
+          // check if participant is part of group organizing this event
+          const isParticipantMemberOfGroup = participant.participantGroups.includes(groupOfEvent);
+  
+          if (!isParticipantMemberOfGroup) throw new Error('Participant is not a member of group organizing this event');
+  
+          // add Event to Participant
+          participant.participantEvents.push(event);
+          await participant.save();
+  
+          // add Participant to Event
+          event.eventParticipants.push(participant);
+          await event.save();
+  
+          return participant;
+  
+        } catch (e) {
+          console.error(e);
         }
 
       }
