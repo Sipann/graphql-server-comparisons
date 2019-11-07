@@ -1,13 +1,22 @@
 import { gql } from 'apollo-server-express';
 
 const typeDefs = gql`
+
+  scalar Date
+
   type InvitedType {
+    """
+    Invited person to a group. May already be a registered user (Participant) or not.
+    """
     id: ID
     email: String! 
     invitedGroups: [GroupType]
   }
 
   type ParticipantType {
+    """
+    Registered user.
+    """
     id: ID
     username: String! 
     email: String! 
@@ -18,15 +27,22 @@ const typeDefs = gql`
   }
 
   type EventType {
+    """
+    Description of an event organized by a group.
+    """
     id: ID
     eventTitle: String!
-    eventDate: String
+    eventDate: Date
     eventLocation: String
     eventGroup: GroupType
     eventParticipants: [ParticipantType]
   }
 
   type GroupType {
+    """
+    Description of a group.
+    
+    """
     id: ID
     groupTitle: String!
     groupEvents: [EventType]
